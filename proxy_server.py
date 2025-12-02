@@ -366,37 +366,6 @@ class DeepSeekProxy:
                                 tool_calls_data[tc_index]["function"]["name"] += tc.function.name
                             if hasattr(tc.function, 'arguments') and tc.function.arguments:
                                 tool_calls_data[tc_index]["function"]["arguments"] += tc.function.arguments
-                        
-                        # 发送 tool_calls chunk
-                        tc_chunk = {
-                            "index": tc_index
-                        }
-                        if hasattr(tc, 'id') and tc.id:
-                            tc_chunk["id"] = tc.id
-                        if hasattr(tc, 'type') and tc.type:
-                            tc_chunk["type"] = tc.type
-                        if hasattr(tc, 'function'):
-                            tc_chunk["function"] = {}
-                            if hasattr(tc.function, 'name') and tc.function.name:
-                                tc_chunk["function"]["name"] = tc.function.name
-                            if hasattr(tc.function, 'arguments') and tc.function.arguments:
-                                tc_chunk["function"]["arguments"] = tc.function.arguments
-                        
-                        chunk_data = {
-                            "id": chat_id,
-                            "object": "chat.completion.chunk",
-                            "created": created_time,
-                            "model": model,
-                            "choices": [{
-                                "index": 0,
-                                "delta": {
-                                    "tool_calls": [tc_chunk]
-                                },
-                                "logprobs": None,
-                                "finish_reason": None
-                            }]
-                        }
-                        yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
             
             # 流式响应结束后，检查是否有工具调用
             tool_calls_list = [tool_calls_data[i] for i in sorted(tool_calls_data.keys())] if tool_calls_data else None
