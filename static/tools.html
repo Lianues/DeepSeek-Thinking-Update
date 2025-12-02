@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP 工具列表</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@2.0.0/dist/flowbite.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif !important;
+            background-color: #fafafa !important;
+            color: #0a0a0a !important;
+            line-height: 1.5 !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            color: #0a0a0a !important;
+            font-weight: 600 !important;
+        }
+        
+        h1 { font-size: 36px !important; line-height: 1.2 !important; }
+        h2 { font-size: 28px !important; line-height: 1.3 !important; }
+        h3 { font-size: 20px !important; line-height: 1.4 !important; }
+        
+        p {
+            font-size: 16px !important;
+            line-height: 24px !important;
+        }
+        
+        code, .font-mono {
+            font-family: 'JetBrains Mono', monospace !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Header -->
+    <header class="bg-white border-b border-neutral-200 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/" class="flex items-center gap-2 text-neutral-500 hover:text-neutral-900 transition-colors">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                    <span class="text-sm">返回</span>
+                </a>
+                <div class="w-px h-6 bg-neutral-200"></div>
+                <div class="flex items-center gap-2">
+                    <i data-lucide="puzzle" class="w-5 h-5 text-neutral-700"></i>
+                    <h3 class="font-semibold">MCP 工具列表</h3>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="text-sm text-neutral-500">
+                    <span id="toolsCount">0</span> 个工具
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Search -->
+        <div class="mb-8">
+            <div class="relative max-w-md">
+                <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+                <input 
+                    type="text" 
+                    id="searchInput" 
+                    placeholder="搜索工具名称或描述..." 
+                    oninput="filterTools()"
+                    class="w-full pl-11 pr-4 py-3 bg-white border border-neutral-200 rounded text-sm focus:outline-none focus:border-neutral-400 transition-colors"
+                >
+            </div>
+        </div>
+
+        <!-- Tools Grid -->
+        <div id="toolsContainer">
+            <div class="text-center py-16 text-neutral-500">
+                <i data-lucide="loader" class="w-6 h-6 mx-auto mb-3 animate-spin"></i>
+                <p>加载工具列表...</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        let allTools = [];
+        
+        // Load tools on page load
+        document.addEventListener('DOMContentLoaded', loadTools);
+        
+        async function loadTools() {
+            try {
+                const response = await fetch('/v1/mcp/status');
+                const data = await response.json();
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                allTools = data.tools || [];
+                document.getElementById('toolsCount').textContent = allTools.length;
+                
+                renderTools(allTools);
+            } catch (error) {
+                showError('加载失败: ' + error.message);
+            }
+        }
+        
+        function renderTools(tools) {
+            const container = document.getElementById('toolsContainer');
+            
+            if (tools.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-16 text-neutral-500">
+                        <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-3 opacity-50"></i>
+                        <p class="font-medium">暂无可用工具</p>
+                        <p class="text-sm mt-1">请确保 MCP 服务已启动并正常运行</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+            
+            // Group tools by server
+            const grouped = {};
+            tools.forEach(tool => {
+                const server = tool.server || 'unknown';
+                if (!grouped[server]) grouped[server] = [];
+                grouped[server].push(tool);
+            });
+            
+            container.innerHTML = Object.entries(grouped).map(([server, serverTools]) => `
+                <div class="mb-8">
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-2 h-2 bg-neutral-900 rounded-full"></div>
+                        <h3 class="text-lg font-medium">${server}</h3>
+                        <span class="text-sm text-neutral-500">${serverTools.length} 个工具</span>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        ${serverTools.map((tool, index) => renderToolCard(tool, index)).join('')}
+                    </div>
+                </div>
+            `).join('');
+            
+            lucide.createIcons();
+        }
+        
+        function renderToolCard(tool, index) {
+            return `
+                <div class="bg-white border border-neutral-200 rounded p-6">
+                    <div class="flex items-start justify-between gap-4 mb-3">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="wrench" class="w-4 h-4 text-neutral-500"></i>
+                            <span class="font-medium font-mono text-sm">${tool.name}</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-neutral-500 mb-4">${tool.description || '暂无描述'}</p>
+                    <details class="group">
+                        <summary class="text-sm text-neutral-600 cursor-pointer hover:text-neutral-900 flex items-center gap-1">
+                            <i data-lucide="code" class="w-3 h-3"></i>
+                            <span>查看 Schema</span>
+                        </summary>
+                        <pre class="mt-3 p-4 bg-neutral-900 text-neutral-100 rounded text-xs overflow-x-auto font-mono">${JSON.stringify(tool, null, 2)}</pre>
+                    </details>
+                </div>
+            `;
+        }
+        
+        function filterTools() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allTools.filter(tool => 
+                tool.name.toLowerCase().includes(query) ||
+                (tool.description && tool.description.toLowerCase().includes(query)) ||
+                (tool.server && tool.server.toLowerCase().includes(query))
+            );
+            renderTools(filtered);
+        }
+        
+        function showError(message) {
+            document.getElementById('toolsContainer').innerHTML = `
+                <div class="text-center py-16 text-neutral-500">
+                    <i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-3 opacity-50"></i>
+                    <p class="font-medium">出错了</p>
+                    <p class="text-sm mt-1">${message}</p>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>

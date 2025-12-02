@@ -1,0 +1,10 @@
+{
+    "name": "baidu_ai_search",
+    "description": "百度 AI 搜索服务，使用大模型进行搜索和总结回复",
+    "version": "1.0.0",
+    "type": "streamableHttp",
+    "url": "https://qianfan.baidubce.com/v2/ai_search/mcp",
+    "headers": {
+        "Authorization": "Bearer bce-v3/ALTAK-evKEQlMCeAVbWxfr7mHb2/c2290bd1690cc4f25ff262a78a5140b66dc65383"
+    }
+}

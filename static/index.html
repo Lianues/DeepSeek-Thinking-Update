@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek 代理服务器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@2.0.0/dist/flowbite.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif !important;
+            background-color: #fafafa !important;
+            color: #0a0a0a !important;
+            line-height: 1.5 !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            color: #0a0a0a !important;
+            font-weight: 600 !important;
+        }
+        
+        h1 {
+            font-size: 36px !important;
+            line-height: 1.2 !important;
+        }
+        
+        h2 {
+            font-size: 28px !important;
+            line-height: 1.3 !important;
+        }
+        
+        h3 {
+            font-size: 20px !important;
+            line-height: 1.4 !important;
+        }
+        
+        p {
+            font-size: 16px !important;
+            line-height: 24px !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Header -->
+    <header class="bg-white border-b border-neutral-200">
+        <div class="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-neutral-900 rounded flex items-center justify-center">
+                    <i data-lucide="server" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold">DeepSeek Proxy</h3>
+                    <p class="text-sm text-neutral-500">OpenAI 兼容代理服务</p>
+                </div>
+            </div>
+            <div id="statusBadge" class="flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded text-sm">
+                <span class="w-2 h-2 bg-neutral-400 rounded-full"></span>
+                <span class="text-neutral-600">检查中...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto px-4 py-16">
+        <!-- Hero Section -->
+        <div class="text-center mb-16">
+            <h1 class="mb-4">MCP 服务管理平台</h1>
+            <p class="text-neutral-600 max-w-xl mx-auto">
+                管理和监控 Model Context Protocol 服务，提供工具集成与健康状态监控
+            </p>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
+            <div class="bg-white p-6 rounded border border-neutral-200">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-8 h-8 bg-neutral-100 rounded flex items-center justify-center">
+                        <i data-lucide="layers" class="w-4 h-4 text-neutral-600"></i>
+                    </div>
+                    <span class="text-sm text-neutral-500">总服务</span>
+                </div>
+                <p class="text-3xl font-semibold" id="totalCount">-</p>
+            </div>
+            <div class="bg-white p-6 rounded border border-neutral-200">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-8 h-8 bg-neutral-100 rounded flex items-center justify-center">
+                        <i data-lucide="check-circle" class="w-4 h-4 text-neutral-600"></i>
+                    </div>
+                    <span class="text-sm text-neutral-500">已启用</span>
+                </div>
+                <p class="text-3xl font-semibold" id="enabledCount">-</p>
+            </div>
+            <div class="bg-white p-6 rounded border border-neutral-200">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-8 h-8 bg-neutral-100 rounded flex items-center justify-center">
+                        <i data-lucide="activity" class="w-4 h-4 text-neutral-600"></i>
+                    </div>
+                    <span class="text-sm text-neutral-500">运行中</span>
+                </div>
+                <p class="text-3xl font-semibold" id="runningCount">-</p>
+            </div>
+            <div class="bg-white p-6 rounded border border-neutral-200">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-8 h-8 bg-neutral-100 rounded flex items-center justify-center">
+                        <i data-lucide="wrench" class="w-4 h-4 text-neutral-600"></i>
+                    </div>
+                    <span class="text-sm text-neutral-500">可用工具</span>
+                </div>
+                <p class="text-3xl font-semibold" id="toolsCount">-</p>
+            </div>
+        </div>
+
+        <!-- Navigation Cards -->
+        <div class="grid md:grid-cols-3 gap-6">
+            <a href="/admin" class="group bg-white p-8 rounded border border-neutral-200 hover:border-neutral-400 transition-all duration-200">
+                <div class="w-12 h-12 bg-neutral-100 rounded flex items-center justify-center mb-6 group-hover:bg-neutral-200 transition-colors">
+                    <i data-lucide="settings" class="w-6 h-6 text-neutral-700"></i>
+                </div>
+                <h3 class="mb-2">MCP 管理</h3>
+                <p class="text-neutral-500 text-sm leading-relaxed">
+                    管理 MCP 服务的启用状态、查看配置详情和工具列表
+                </p>
+                <div class="flex items-center gap-1 mt-6 text-sm text-neutral-400 group-hover:text-neutral-600 transition-colors">
+                    <span>进入管理</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </div>
+            </a>
+
+            <a href="/status" class="group bg-white p-8 rounded border border-neutral-200 hover:border-neutral-400 transition-all duration-200">
+                <div class="w-12 h-12 bg-neutral-100 rounded flex items-center justify-center mb-6 group-hover:bg-neutral-200 transition-colors">
+                    <i data-lucide="heart-pulse" class="w-6 h-6 text-neutral-700"></i>
+                </div>
+                <h3 class="mb-2">健康状态</h3>
+                <p class="text-neutral-500 text-sm leading-relaxed">
+                    监控服务运行状态、查看 API 端点和连接信息
+                </p>
+                <div class="flex items-center gap-1 mt-6 text-sm text-neutral-400 group-hover:text-neutral-600 transition-colors">
+                    <span>查看状态</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </div>
+            </a>
+
+            <a href="/tools" class="group bg-white p-8 rounded border border-neutral-200 hover:border-neutral-400 transition-all duration-200">
+                <div class="w-12 h-12 bg-neutral-100 rounded flex items-center justify-center mb-6 group-hover:bg-neutral-200 transition-colors">
+                    <i data-lucide="puzzle" class="w-6 h-6 text-neutral-700"></i>
+                </div>
+                <h3 class="mb-2">工具列表</h3>
+                <p class="text-neutral-500 text-sm leading-relaxed">
+                    浏览所有可用的 MCP 工具、参数定义和使用说明
+                </p>
+                <div class="flex items-center gap-1 mt-6 text-sm text-neutral-400 group-hover:text-neutral-600 transition-colors">
+                    <span>查看工具</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </div>
+            </a>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-neutral-200 mt-auto">
+        <div class="max-w-6xl mx-auto px-4 py-6">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                <p class="text-sm text-neutral-500">DeepSeek OpenAI 兼容代理服务器</p>
+                <div class="flex items-center gap-6 text-sm text-neutral-500">
+                    <a href="/v1/models" class="hover:text-neutral-900 transition-colors">API 模型</a>
+                    <a href="/health" class="hover:text-neutral-900 transition-colors">健康检查</a>
+                    <a href="/v1/mcp/status" class="hover:text-neutral-900 transition-colors">MCP 状态</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        // Load status
+        async function loadStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                const badge = document.getElementById('statusBadge');
+                if (data.status === 'ok') {
+                    badge.innerHTML = `
+                        <span class="w-2 h-2 bg-neutral-900 rounded-full"></span>
+                        <span class="text-neutral-900">运行正常</span>
+                    `;
+                } else {
+                    badge.innerHTML = `
+                        <span class="w-2 h-2 bg-neutral-400 rounded-full"></span>
+                        <span class="text-neutral-600">服务异常</span>
+                    `;
+                }
+                
+                // Update stats
+                if (data.mcp && data.mcp.available) {
+                    document.getElementById('toolsCount').textContent = data.mcp.tools_count || 0;
+                    
+                    const serversResponse = await fetch('/v1/mcp/servers/all');
+                    const serversData = await serversResponse.json();
+                    const servers = Object.values(serversData.servers || {});
+                    
+                    document.getElementById('totalCount').textContent = servers.length;
+                    document.getElementById('enabledCount').textContent = servers.filter(s => s.enabled).length;
+                    document.getElementById('runningCount').textContent = servers.filter(s => s.running).length;
+                } else {
+                    document.getElementById('totalCount').textContent = '0';
+                    document.getElementById('enabledCount').textContent = '0';
+                    document.getElementById('runningCount').textContent = '0';
+                    document.getElementById('toolsCount').textContent = '0';
+                }
+            } catch (error) {
+                console.error('Failed to load status:', error);
+            }
+        }
+        
+        loadStatus();
+    </script>
+</body>
+</html>

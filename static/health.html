@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服务健康状态</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@2.0.0/dist/flowbite.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif !important;
+            background-color: #fafafa !important;
+            color: #0a0a0a !important;
+            line-height: 1.5 !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            color: #0a0a0a !important;
+            font-weight: 600 !important;
+        }
+        
+        h1 { font-size: 36px !important; line-height: 1.2 !important; }
+        h2 { font-size: 28px !important; line-height: 1.3 !important; }
+        h3 { font-size: 20px !important; line-height: 1.4 !important; }
+        
+        p {
+            font-size: 16px !important;
+            line-height: 24px !important;
+        }
+        
+        code, .font-mono {
+            font-family: 'JetBrains Mono', monospace !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Header -->
+    <header class="bg-white border-b border-neutral-200 sticky top-0 z-40">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/" class="flex items-center gap-2 text-neutral-500 hover:text-neutral-900 transition-colors">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                    <span class="text-sm">返回</span>
+                </a>
+                <div class="w-px h-6 bg-neutral-200"></div>
+                <div class="flex items-center gap-2">
+                    <i data-lucide="heart-pulse" class="w-5 h-5 text-neutral-700"></i>
+                    <h3 class="font-semibold">服务健康状态</h3>
+                </div>
+            </div>
+            <button onclick="refreshStatus()" class="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                <span>刷新</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-5xl mx-auto px-4 py-8">
+        <!-- Status Overview -->
+        <div id="statusOverview" class="bg-white border border-neutral-200 rounded p-8 mb-8 text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-neutral-100 rounded-full mb-4">
+                <i data-lucide="loader" class="w-8 h-8 text-neutral-400 animate-spin"></i>
+            </div>
+            <p class="text-neutral-500">检查服务状态...</p>
+        </div>
+
+        <!-- MCP Status -->
+        <div class="bg-white border border-neutral-200 rounded mb-8">
+            <div class="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+                <h3>MCP 服务状态</h3>
+            </div>
+            <div id="mcpStatus" class="p-6">
+                <div class="text-center py-8 text-neutral-500">
+                    <i data-lucide="loader" class="w-6 h-6 mx-auto mb-3 animate-spin"></i>
+                    <p>加载中...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Endpoints -->
+        <div class="bg-white border border-neutral-200 rounded">
+            <div class="px-6 py-4 border-b border-neutral-200">
+                <h3>API 端点</h3>
+            </div>
+            <div class="divide-y divide-neutral-200">
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <span class="px-2 py-1 text-xs font-medium bg-neutral-100 text-neutral-700 rounded">POST</span>
+                    <code class="text-sm font-mono">/v1/chat/completions</code>
+                    <span class="ml-auto text-sm text-neutral-500">聊天补全</span>
+                </div>
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <span class="px-2 py-1 text-xs font-medium bg-neutral-100 text-neutral-700 rounded">GET</span>
+                    <code class="text-sm font-mono">/v1/models</code>
+                    <span class="ml-auto text-sm text-neutral-500">模型列表</span>
+                </div>
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <span class="px-2 py-1 text-xs font-medium bg-neutral-100 text-neutral-700 rounded">GET</span>
+                    <code class="text-sm font-mono">/v1/mcp/status</code>
+                    <span class="ml-auto text-sm text-neutral-500">MCP 状态</span>
+                </div>
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <span class="px-2 py-1 text-xs font-medium bg-neutral-100 text-neutral-700 rounded">GET</span>
+                    <code class="text-sm font-mono">/v1/mcp/tools</code>
+                    <span class="ml-auto text-sm text-neutral-500">工具列表</span>
+                </div>
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <span class="px-2 py-1 text-xs font-medium bg-neutral-100 text-neutral-700 rounded">GET</span>
+                    <code class="text-sm font-mono">/v1/mcp/servers/all</code>
+                    <span class="ml-auto text-sm text-neutral-500">所有服务</span>
+                </div>
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <span class="px-2 py-1 text-xs font-medium bg-neutral-100 text-neutral-700 rounded">POST</span>
+                    <code class="text-sm font-mono">/v1/mcp/reload</code>
+                    <span class="ml-auto text-sm text-neutral-500">重载配置</span>
+                </div>
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <span class="px-2 py-1 text-xs font-medium bg-neutral-100 text-neutral-700 rounded">GET</span>
+                    <code class="text-sm font-mono">/health</code>
+                    <span class="ml-auto text-sm text-neutral-500">健康检查</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        // Load status on page load
+        document.addEventListener('DOMContentLoaded', refreshStatus);
+        
+        async function refreshStatus() {
+            const overview = document.getElementById('statusOverview');
+            const mcpStatus = document.getElementById('mcpStatus');
+            
+            overview.innerHTML = `
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-neutral-100 rounded-full mb-4">
+                    <i data-lucide="loader" class="w-8 h-8 text-neutral-400 animate-spin"></i>
+                </div>
+                <p class="text-neutral-500">检查服务状态...</p>
+            `;
+            lucide.createIcons();
+            
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                const now = new Date().toLocaleString('zh-CN');
+                
+                if (data.status === 'ok') {
+                    overview.innerHTML = `
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-neutral-100 rounded-full mb-4">
+                            <i data-lucide="check" class="w-8 h-8 text-neutral-900"></i>
+                        </div>
+                        <p class="text-xl font-semibold mb-2">服务运行正常</p>
+                        <p class="text-sm text-neutral-500">最后检查: ${now}</p>
+                    `;
+                } else {
+                    overview.innerHTML = `
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-neutral-100 rounded-full mb-4">
+                            <i data-lucide="alert-triangle" class="w-8 h-8 text-neutral-600"></i>
+                        </div>
+                        <p class="text-xl font-semibold mb-2">服务异常</p>
+                        <p class="text-sm text-neutral-500">最后检查: ${now}</p>
+                    `;
+                }
+                lucide.createIcons();
+                
+                // Render MCP status
+                if (data.mcp) {
+                    renderMcpStatus(data.mcp);
+                } else {
+                    mcpStatus.innerHTML = `
+                        <div class="text-center py-8 text-neutral-500">
+                            MCP 功能未启用
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                overview.innerHTML = `
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-neutral-100 rounded-full mb-4">
+                        <i data-lucide="x" class="w-8 h-8 text-neutral-600"></i>
+                    </div>
+                    <p class="text-xl font-semibold mb-2">服务无法访问</p>
+                    <p class="text-sm text-neutral-500">${error.message}</p>
+                `;
+                lucide.createIcons();
+                
+                mcpStatus.innerHTML = `
+                    <div class="text-center py-8 text-neutral-500">
+                        无法获取 MCP 状态
+                    </div>
+                `;
+            }
+        }
+        
+        function renderMcpStatus(mcp) {
+            const container = document.getElementById('mcpStatus');
+            
+            if (!mcp.available) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-neutral-500">
+                        MCP 功能未启用
+                    </div>
+                `;
+                return;
+            }
+            
+            const servers = mcp.servers || {};
+            const serverList = Object.entries(servers);
+            const toolsCount = mcp.tools_count || 0;
+            const runningCount = serverList.filter(([_, s]) => s.running).length;
+            const enabledCount = serverList.filter(([_, s]) => s.enabled).length;
+            
+            container.innerHTML = `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="p-4 bg-neutral-50 rounded">
+                        <p class="text-sm text-neutral-500 mb-1">总服务</p>
+                        <p class="text-xl font-semibold">${serverList.length}</p>
+                    </div>
+                    <div class="p-4 bg-neutral-50 rounded">
+                        <p class="text-sm text-neutral-500 mb-1">已启用</p>
+                        <p class="text-xl font-semibold">${enabledCount}</p>
+                    </div>
+                    <div class="p-4 bg-neutral-50 rounded">
+                        <p class="text-sm text-neutral-500 mb-1">运行中</p>
+                        <p class="text-xl font-semibold">${runningCount}</p>
+                    </div>
+                    <div class="p-4 bg-neutral-50 rounded">
+                        <p class="text-sm text-neutral-500 mb-1">可用工具</p>
+                        <p class="text-xl font-semibold">${toolsCount}</p>
+                    </div>
+                </div>
+                
+                ${serverList.length > 0 ? `
+                    <div class="border border-neutral-200 rounded divide-y divide-neutral-200">
+                        ${serverList.map(([name, server]) => `
+                            <div class="px-4 py-3 flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    ${server.running 
+                                        ? '<div class="w-2 h-2 bg-neutral-900 rounded-full"></div>'
+                                        : '<div class="w-2 h-2 bg-neutral-300 rounded-full"></div>'
+                                    }
+                                    <div>
+                                        <span class="font-medium">${name}</span>
+                                        <span class="text-sm text-neutral-500 ml-2">${server.type}</span>
+                                    </div>
+                                </div>
+                                <span class="text-sm text-neutral-500">${server.tools_count || 0} 工具</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : `
+                    <div class="text-center py-8 text-neutral-500">
+                        暂无 MCP 服务
+                    </div>
+                `}
+            `;
+        }
+    </script>
+</body>
+</html>
