@@ -417,8 +417,8 @@ class DeepSeekProxy:
                     tools_obj = {"tool_calls": flattened_tools}
                     tools_json = json.dumps(tools_obj, ensure_ascii=False)
                     
-                    # 发送压扁的工具调用作为 reasoning_content
-                    tool_calls_reasoning = "\n\n" + tools_json if reasoning_content else tools_json
+                    # 发送压扁的工具调用作为 reasoning_content（后面添加两个换行符）
+                    tool_calls_reasoning = ("\n\n" if reasoning_content else "") + tools_json + "\n\n"
                     chunk_data = {
                         "id": chat_id,
                         "object": "chat.completion.chunk",
