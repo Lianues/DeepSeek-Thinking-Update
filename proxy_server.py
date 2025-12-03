@@ -40,7 +40,9 @@ def load_config(config_path: str = "config.jsonc") -> Dict[str, Any]:
         "port": 8002,
         "debug": False,
         "mcp_enabled": True,
-        "auto_execute_mcp_tools": True
+        "auto_execute_mcp_tools": True,
+        "system_prompt_enabled": False,
+        "system_prompt": "## 工具调用注意事项\n\n当你使用工具获取信息时，请注意以下几点：\n\n1. **工具调用结果不会保存在对话历史中**：每次工具调用的原始结果只会在当前回合可见，后续对话中将无法再访问这些原始数据。\n\n2. **主动提取和整理信息**：在收到工具返回的结果后，请在你的思考过程中提取所有有用的信息，包括：\n   - 关键数据和数值\n   - 重要的名称、日期、地点等\n   - 相关的上下文信息\n   - 可能在后续对话中需要引用的内容\n\n3. **在回复中复述关键信息**：将提取的重要信息融入你的回复中，这样用户和你都能在后续对话中参考这些信息。\n\n4. **结构化输出**：当工具返回大量信息时，请以清晰、结构化的方式呈现，便于理解和后续引用。"
     }
     
     if not os.path.exists(config_path):
@@ -51,11 +53,44 @@ def load_config(config_path: str = "config.jsonc") -> Dict[str, Any]:
         with open(config_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # 移除 JSONC 注释
-        content = re.sub(r'//.*$', '', content, flags=re.MULTILINE)
+        # 移除 JSONC 注释（更完善的处理）
+        # 1. 移除多行注释 /* ... */
         content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+        # 2. 移除单行注释 // ...（但保留字符串中的 //）
+        lines = []
+        for line in content.split('\n'):
+            # 简单处理：查找不在字符串中的 // 注释
+            # 如果行中有 //, 只保留 // 之前的部分（简化处理）
+            if '//' in line:
+                # 检查 // 是否在字符串中
+                in_string = False
+                quote_char = None
+                comment_pos = -1
+                for i, char in enumerate(line):
+                    if char in ('"', "'") and (i == 0 or line[i-1] != '\\'):
+                        if not in_string:
+                            in_string = True
+                            quote_char = char
+                        elif char == quote_char:
+                            in_string = False
+                            quote_char = None
+                    elif char == '/' and i < len(line) - 1 and line[i+1] == '/' and not in_string:
+                        comment_pos = i
+                        break
+                
+                if comment_pos >= 0:
+                    line = line[:comment_pos]
+            lines.append(line)
+        content = '\n'.join(lines)
         
         config = json.loads(content)
+        
+        # 调试：显示从配置文件加载的关键配置
+        print(f"✓ 配置文件加载成功: {config_path}")
+        if 'port' in config:
+            print(f"  - 配置文件中的端口: {config['port']}")
+        if 'host' in config:
+            print(f"  - 配置文件中的主机: {config['host']}")
         
         # 合并默认配置
         for key, value in default_config.items():
@@ -64,7 +99,9 @@ def load_config(config_path: str = "config.jsonc") -> Dict[str, Any]:
         
         return config
     except Exception as e:
-        print(f"加载配置文件失败: {e}，使用默认配置")
+        print(f"✗ 加载配置文件失败: {e}，使用默认配置")
+        import traceback
+        traceback.print_exc()
         return default_config
 
 
