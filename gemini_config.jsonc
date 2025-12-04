@@ -7,6 +7,10 @@
     // 用于转发请求到 Gemini API
     "gemini_api_url": "https://generativelanguage.googleapis.com/v1beta/models",
     
+    // 模型列表 API URL
+    // 用于获取可用模型列表
+    "gemini_models_url": "https://generativelanguage.googleapis.com/v1beta/models",
+    
     // 转发到后端 API 的 Key
     // 当用户请求不携带 API Key 时，使用此 Key 进行转发
     // 留空则要求用户必须提供自己的 API Key

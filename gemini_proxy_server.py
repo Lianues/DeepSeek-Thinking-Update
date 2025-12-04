@@ -33,6 +33,7 @@ def load_config(config_path: str = "gemini_config.jsonc") -> Dict[str, Any]:
     """加载配置文件（支持 JSONC 格式，带注释）"""
     default_config = {
         "gemini_api_url": "https://generativelanguage.googleapis.com/v1beta/models",
+        "gemini_models_url": "https://generativelanguage.googleapis.com/v1beta/models",
         "api_key": "",
         "access_keys": [],
         "allow_user_api_key": True,
@@ -1200,7 +1201,7 @@ def stream_generate_content(model: str):
 
 @app.route('/v1beta/models', methods=['GET'])
 def list_models():
-    """列出可用模型"""
+    """列出可用模型（自动获取所有页面）"""
     global CONFIG
     
     api_key = request.headers.get('x-goog-api-key', '')
@@ -1214,27 +1215,44 @@ def list_models():
         return jsonify({"error": {"message": error_msg}}), 401
     
     try:
-        base_url = CONFIG.get("gemini_api_url", "https://generativelanguage.googleapis.com/v1beta/models")
-        # 获取基础 URL（移除 /models）
-        if base_url.endswith('/models'):
-            models_url = base_url
-        else:
-            models_url = f"{base_url.rsplit('/', 1)[0]}/models"
+        # 使用配置的模型列表 URL
+        models_url = CONFIG.get("gemini_models_url", "https://generativelanguage.googleapis.com/v1beta/models")
         
         headers = {
             "x-goog-api-key": actual_api_key
         }
-        response = requests.get(models_url, headers=headers, timeout=10)
         
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({
-                "error": {
-                    "message": f"Failed to fetch models: {response.status_code}",
-                    "details": response.text
-                }
-            }), response.status_code
+        # 获取所有模型（自动处理分页）
+        all_models = []
+        page_token = None
+        
+        while True:
+            # 构建请求参数，每页获取 1000 个（足够大）
+            params = {"pageSize": 10000}
+            if page_token:
+                params["pageToken"] = page_token
+            
+            response = requests.get(models_url, headers=headers, params=params, timeout=30)
+            
+            if response.status_code != 200:
+                return jsonify({
+                    "error": {
+                        "message": f"Failed to fetch models: {response.status_code}",
+                        "details": response.text
+                    }
+                }), response.status_code
+            
+            data = response.json()
+            models = data.get("models", [])
+            all_models.extend(models)
+            
+            # 检查是否有下一页
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        
+        # 返回合并后的结果（不包含 nextPageToken）
+        return jsonify({"models": all_models})
     
     except Exception as e:
         return jsonify({
