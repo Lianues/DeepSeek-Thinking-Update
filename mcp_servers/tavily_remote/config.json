@@ -1,0 +1,28 @@
+{
+    "name": "tavily_remote",
+    "description": "Tavily 远程 MCP 服务器，提供网页搜索、数据提取、网站映射和爬取功能",
+    "version": "1.0.0",
+    "type": "streamableHttp",
+    "url": "https://mcp.tavily.com/mcp/",
+    "headers": {
+        "Authorization": "Bearer tvly-dev-"
+    },
+    "tools": [
+        {
+            "name": "tavily_search",
+            "description": "使用 Tavily 进行实时网页搜索"
+        },
+        {
+            "name": "tavily_extract",
+            "description": "从网页中智能提取数据"
+        },
+        {
+            "name": "tavily_map",
+            "description": "创建网站的结构化映射"
+        },
+        {
+            "name": "tavily_crawl",
+            "description": "系统化地探索和爬取网站"
+        }
+    ]
+}
