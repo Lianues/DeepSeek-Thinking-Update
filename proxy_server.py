@@ -41,6 +41,7 @@ def load_config(config_path: str = "config.jsonc") -> Dict[str, Any]:
         "debug": False,
         "mcp_enabled": True,
         "auto_execute_mcp_tools": True,
+        "max_iterations": 100,
         "system_prompt_enabled": False,
         "system_prompt": "## 工具调用注意事项\n\n当你使用工具获取信息时，请注意以下几点：\n\n1. **工具调用结果不会保存在对话历史中**：每次工具调用的原始结果只会在当前回合可见，后续对话中将无法再访问这些原始数据。\n\n2. **主动提取和整理信息**：在收到工具返回的结果后，请在你的思考过程中提取所有有用的信息，包括：\n   - 关键数据和数值\n   - 重要的名称、日期、地点等\n   - 相关的上下文信息\n   - 可能在后续对话中需要引用的内容\n\n3. **在回复中复述关键信息**：将提取的重要信息融入你的回复中，这样用户和你都能在后续对话中参考这些信息。\n\n4. **结构化输出**：当工具返回大量信息时，请以清晰、结构化的方式呈现，便于理解和后续引用。"
     }
@@ -196,24 +197,25 @@ class DeepSeekProxy:
         
         return result
     
-    def _flatten_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """压扁 tool_calls，去掉 id，保留 function、type、index"""
-        if not tool_calls:
-            return []
+    def _format_tool_call_text(self, tool_name: str, arguments: str) -> str:
+        """将工具调用格式化为简单文本格式"""
+        return f"「调用工具：{tool_name}|内容：{arguments}」"
+    
+    def _replace_old_tool_results(self, messages: List[Dict[str, Any]], current_tool_call_ids: set):
+        """
+        将历史轮次的工具调用结果替换为占位符「调用完毕」
+        只保留当前轮次的工具调用结果
         
-        flattened = []
-        for i, tc in enumerate(tool_calls):
-            if isinstance(tc, dict):
-                flattened.append({
-                    "function": {
-                        "name": tc["function"]["name"],
-                        "arguments": tc["function"]["arguments"]
-                    },
-                    "type": tc.get("type", "function"),
-                    "index": tc.get("index", i)
-                })
-        
-        return flattened
+        Args:
+            messages: 消息列表
+            current_tool_call_ids: 当前轮次的工具调用 ID 集合
+        """
+        for msg in messages:
+            if isinstance(msg, dict) and msg.get('role') == 'tool':
+                tool_call_id = msg.get('tool_call_id', '')
+                # 如果不是当前轮次的工具调用，替换为占位符
+                if tool_call_id not in current_tool_call_ids:
+                    msg['content'] = '调用完毕'
     
     def _merge_assistant_message(
         self,
@@ -223,7 +225,7 @@ class DeepSeekProxy:
         new_content: str,
         new_tool_calls: Optional[List]
     ):
-        """合并助手消息"""
+        """合并助手消息（不添加占位符到 reasoning_content，占位符仅用于返回给用户）"""
         # 删除所有 tool 消息
         while messages and isinstance(messages[-1], dict) and messages[-1].get('role') == 'tool':
             messages.pop()
@@ -231,19 +233,8 @@ class DeepSeekProxy:
         if assistant_msg_index is not None and assistant_msg_index < len(messages):
             prev_assistant = messages[assistant_msg_index]
             
-            # 将旧的 tool_calls 压扁并添加到 reasoning_content
+            # 获取旧的 reasoning_content（不添加占位符）
             old_reasoning = prev_assistant.get('reasoning_content', '') or ''
-            old_tool_calls = prev_assistant.get('tool_calls', [])
-            
-            if old_tool_calls:
-                flattened_tools = self._flatten_tool_calls(old_tool_calls)
-                tools_obj = {"tool_calls": flattened_tools}
-                tools_json = json.dumps(tools_obj, ensure_ascii=False)
-                
-                if old_reasoning:
-                    old_reasoning = old_reasoning + "\n\n" + tools_json
-                else:
-                    old_reasoning = tools_json
             
             # 追加新的思维链
             if new_reasoning:
@@ -314,11 +305,15 @@ class DeepSeekProxy:
         
         messages_copy = [msg.copy() for msg in messages]
         iteration = 0
-        max_iterations = 10
+        max_iterations = CONFIG.get('max_iterations', 100)
         chat_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created_time = int(time.time())
+        current_round_tool_ids = set()  # 跟踪当前轮次的工具调用 ID
         
         while iteration < max_iterations:
+            # 在调用 API 前，替换历史轮次的工具结果为占位符
+            self._replace_old_tool_results(messages_copy, current_round_tool_ids)
+            
             # 调用 DeepSeek API（流式）
             stream_response = self.client.chat.completions.create(
                 model=model,
@@ -439,23 +434,20 @@ class DeepSeekProxy:
                 
                 # 执行 MCP 工具调用
                 if mcp_tool_calls:
-                    # 将工具调用压扁并追加到 reasoning_content
-                    flattened_tools = []
-                    for tc in tool_calls_list:
-                        flattened_tools.append({
-                            "function": {
-                                "name": tc["function"]["name"],
-                                "arguments": tc["function"]["arguments"]
-                            },
-                            "type": tc.get("type", "function"),
-                            "index": tc.get("index", 0)
-                        })
+                    # 清空当前轮次工具 ID，准备记录新的
+                    current_round_tool_ids.clear()
                     
-                    tools_obj = {"tool_calls": flattened_tools}
-                    tools_json = json.dumps(tools_obj, ensure_ascii=False)
+                    # 将工具调用转换为简单文本格式（仅用于发送给用户）
+                    tool_call_texts = []
+                    for tc in mcp_tool_calls:
+                        name = tc["function"]["name"]
+                        args = tc["function"]["arguments"]
+                        tool_call_texts.append(self._format_tool_call_text(name, args))
                     
-                    # 发送压扁的工具调用作为 reasoning_content（后面添加两个换行符）
-                    tool_calls_reasoning = ("\n\n" if reasoning_content else "") + tools_json + "\n\n"
+                    tools_text = "\n".join(tool_call_texts)
+                    
+                    # 发送简单文本格式的工具调用作为 reasoning_content（仅发送给用户，不保存）
+                    tool_calls_reasoning = ("\n\n" if reasoning_content else "") + tools_text + "\n\n"
                     chunk_data = {
                         "id": chat_id,
                         "object": "chat.completion.chunk",
@@ -472,13 +464,7 @@ class DeepSeekProxy:
                     }
                     yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
                     
-                    # 更新累积的 reasoning_content
-                    if reasoning_content:
-                        reasoning_content += tool_calls_reasoning
-                    else:
-                        reasoning_content = tools_json
-                    
-                    # 构建助手消息（包含合并后的 reasoning_content）
+                    # 构建助手消息（只包含原始的 reasoning_content，不包含占位符）
                     assistant_msg = {
                         "role": "assistant",
                         "content": content or None,
@@ -492,6 +478,9 @@ class DeepSeekProxy:
                     for tc in mcp_tool_calls:
                         args = json.loads(tc["function"]["arguments"]) if tc["function"]["arguments"] else {}
                         result = self._execute_mcp_tool(tc["function"]["name"], args)
+                        
+                        # 记录当前轮次的工具调用 ID
+                        current_round_tool_ids.add(tc["id"])
                         
                         # 添加工具结果到消息
                         messages_copy.append({
@@ -589,11 +578,15 @@ class DeepSeekProxy:
         
         messages_copy = [msg.copy() for msg in messages]
         iteration = 0
-        max_iterations = 10
+        max_iterations = CONFIG.get('max_iterations', 100)
         assistant_msg_index = None
         total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        current_round_tool_ids = set()  # 跟踪当前轮次的工具调用 ID
         
         while iteration < max_iterations:
+            # 在调用 API 前，替换历史轮次的工具结果为占位符
+            self._replace_old_tool_results(messages_copy, current_round_tool_ids)
+            
             # 调用 DeepSeek API（使用合并后的工具列表）
             response = self.client.chat.completions.create(
                 model=model,
@@ -700,9 +693,15 @@ class DeepSeekProxy:
                 
                 # 执行 MCP 工具调用
                 if mcp_tool_calls:
+                    # 清空当前轮次工具 ID，准备记录新的
+                    current_round_tool_ids.clear()
+                    
                     for tc in mcp_tool_calls:
                         args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                         result = self._execute_mcp_tool(tc.function.name, args)
+                        
+                        # 记录当前轮次的工具调用 ID
+                        current_round_tool_ids.add(tc.id)
                         
                         # 添加工具结果到消息
                         messages_copy.append({

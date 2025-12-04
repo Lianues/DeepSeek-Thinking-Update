@@ -99,44 +99,15 @@ class BaiduSearchMCPServer:
     
     def format_search_results(self, results: Dict[str, Any]) -> str:
         """
-        格式化搜索结果为可读文本
+        格式化搜索结果为JSON格式
         
         Args:
             results: 搜索结果
         
         Returns:
-            格式化后的文本
+            格式化后的JSON字符串
         """
-        if "error" in results:
-            return f"搜索出错: {results['error']}"
-        
-        references = results.get("references", [])
-        if not references:
-            return "未找到相关搜索结果"
-        
-        formatted = []
-        for ref in references:
-            idx = ref.get("id", 0)
-            title = ref.get("title", "无标题")
-            url = ref.get("url", "")
-            content = ref.get("content", "")
-            date = ref.get("date", "")
-            website = ref.get("website", "") or ref.get("web_anchor", "")
-            
-            item = f"[{idx}] {title}\n"
-            if website:
-                item += f"    来源: {website}\n"
-            if date:
-                item += f"    时间: {date}\n"
-            item += f"    链接: {url}\n"
-            if content:
-                # 截取内容预览
-                preview = content[:300] + "..." if len(content) > 300 else content
-                item += f"    摘要: {preview}\n"
-            
-            formatted.append(item)
-        
-        return "\n".join(formatted)
+        return json.dumps(results, ensure_ascii=False, indent=2)
     
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -175,7 +146,7 @@ class BaiduSearchMCPServer:
                     "tools": [
                         {
                             "name": "baidu_web_search",
-                            "description": "使用百度搜索引擎搜索网页内容，返回相关网页的标题、链接、摘要等信息。适合搜索新闻、资讯、知识问答等内容。",
+                            "description": "使用百度搜索引擎搜索网页内容，返回完整的JSON格式搜索结果，包含标题、链接、详细内容等信息。适合搜索新闻、资讯、知识问答等内容。",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -241,6 +212,7 @@ class BaiduSearchMCPServer:
                     block_websites=block_websites
                 )
                 
+                # 直接返回JSON格式结果
                 formatted = self.format_search_results(results)
                 
                 return {

@@ -2,6 +2,4 @@ openai>=1.0.0
 flask>=2.0.0
 requests>=2.28.0
 
-# MCP 支持
-# - stdio 类型：如果需要使用 stdio MCP 服务器，请确保安装 Node.js 和 npx
-# - streamableHttp 类型：使用 requests 库进行 HTTP 通信
+beautifulsoup4>=4.9.3
