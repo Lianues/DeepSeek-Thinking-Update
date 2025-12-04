@@ -42,6 +42,9 @@ def load_config(config_path: str = "config.jsonc") -> Dict[str, Any]:
         "mcp_enabled": True,
         "auto_execute_mcp_tools": True,
         "max_iterations": 100,
+        "api_retry_count": 2,
+        "api_retry_delay": 5,
+        "api_timeout": 300,
         "system_prompt_enabled": False,
         "system_prompt": "## 工具调用注意事项\n\n当你使用工具获取信息时，请注意以下几点：\n\n1. **工具调用结果不会保存在对话历史中**：每次工具调用的原始结果只会在当前回合可见，后续对话中将无法再访问这些原始数据。\n\n2. **主动提取和整理信息**：在收到工具返回的结果后，请在你的思考过程中提取所有有用的信息，包括：\n   - 关键数据和数值\n   - 重要的名称、日期、地点等\n   - 相关的上下文信息\n   - 可能在后续对话中需要引用的内容\n\n3. **在回复中复述关键信息**：将提取的重要信息融入你的回复中，这样用户和你都能在后续对话中参考这些信息。\n\n4. **结构化输出**：当工具返回大量信息时，请以清晰、结构化的方式呈现，便于理解和后续引用。"
     }
@@ -168,7 +171,8 @@ class DeepSeekProxy:
         """初始化客户端"""
         global CONFIG
         base_url = get_base_url_from_chat_url(CONFIG.get("chat_completions_url", "https://api.deepseek.com/v1/chat/completions"))
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        timeout = CONFIG.get('api_timeout', 300)
+        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
         self.mcp_manager = mcp_mgr
     
     def _message_to_dict(self, message) -> Dict[str, Any]:
@@ -315,14 +319,34 @@ class DeepSeekProxy:
             # 在调用 API 前，替换历史轮次的工具结果为占位符
             self._replace_old_tool_results(messages_copy, current_round_tool_ids)
             
-            # 调用 DeepSeek API（流式）
-            stream_response = self.client.chat.completions.create(
-                model=model,
-                messages=messages_copy,
-                tools=combined_tools,
-                stream=True,
-                **kwargs
-            )
+            # 调用 DeepSeek API（流式），支持重试
+            is_internal_call = iteration > 0
+            max_retries = CONFIG.get('api_retry_count', 2)
+            retry_delay = CONFIG.get('api_retry_delay', 5)
+            
+            stream_response = None
+            last_error = None
+            
+            for retry in range(max_retries + 1):
+                try:
+                    stream_response = self.client.chat.completions.create(
+                        model=model,
+                        messages=messages_copy,
+                        tools=combined_tools,
+                        stream=True,
+                        **kwargs
+                    )
+                    break  # 成功，跳出重试循环
+                except Exception as e:
+                    last_error = e
+                    if is_internal_call and retry < max_retries:
+                        print(f"[重试] API 请求失败: {str(e)}，{retry_delay}秒后重试 ({retry + 1}/{max_retries})...")
+                        time.sleep(retry_delay)
+                    else:
+                        raise  # 非内部调用或重试次数用尽，抛出异常
+            
+            if stream_response is None:
+                raise last_error
             
             # 收集流式响应
             reasoning_content = ""
@@ -626,13 +650,33 @@ class DeepSeekProxy:
             # 在调用 API 前，替换历史轮次的工具结果为占位符
             self._replace_old_tool_results(messages_copy, current_round_tool_ids)
             
-            # 调用 DeepSeek API（使用合并后的工具列表）
-            response = self.client.chat.completions.create(
-                model=model,
-                messages=messages_copy,
-                tools=combined_tools,
-                **kwargs
-            )
+            # 调用 DeepSeek API（使用合并后的工具列表），支持重试
+            is_internal_call = iteration > 0
+            max_retries = CONFIG.get('api_retry_count', 2)
+            retry_delay = CONFIG.get('api_retry_delay', 5)
+            
+            response = None
+            last_error = None
+            
+            for retry in range(max_retries + 1):
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model,
+                        messages=messages_copy,
+                        tools=combined_tools,
+                        **kwargs
+                    )
+                    break  # 成功，跳出重试循环
+                except Exception as e:
+                    last_error = e
+                    if is_internal_call and retry < max_retries:
+                        print(f"[重试] API 请求失败: {str(e)}，{retry_delay}秒后重试 ({retry + 1}/{max_retries})...")
+                        time.sleep(retry_delay)
+                    else:
+                        raise  # 非内部调用或重试次数用尽，抛出异常
+            
+            if response is None:
+                raise last_error
             
             message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
