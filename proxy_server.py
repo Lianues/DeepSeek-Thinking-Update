@@ -309,6 +309,7 @@ class DeepSeekProxy:
         chat_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created_time = int(time.time())
         current_round_tool_ids = set()  # 跟踪当前轮次的工具调用 ID
+        last_usage = None  # 只保留最后一轮的 usage
         
         while iteration < max_iterations:
             # 在调用 API 前，替换历史轮次的工具结果为占位符
@@ -328,6 +329,7 @@ class DeepSeekProxy:
             content = ""
             tool_calls_data = {}  # id -> {function: {name, arguments}, type, index}
             finish_reason = None
+            chunk_usage = None
             
             for chunk in stream_response:
                 if not chunk.choices:
@@ -338,6 +340,10 @@ class DeepSeekProxy:
                 
                 if chunk_finish_reason:
                     finish_reason = chunk_finish_reason
+                
+                # 收集 usage 信息（通常在最后一个 chunk 中）
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    chunk_usage = chunk.usage
                 
                 # 处理 reasoning_content 增量
                 if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
@@ -399,12 +405,37 @@ class DeepSeekProxy:
                             if hasattr(tc.function, 'arguments') and tc.function.arguments:
                                 tool_calls_data[tc_index]["function"]["arguments"] += tc.function.arguments
             
+            # 保存最后一轮的 usage 信息
+            if chunk_usage:
+                last_usage = {
+                    "prompt_tokens": getattr(chunk_usage, 'prompt_tokens', 0),
+                    "completion_tokens": getattr(chunk_usage, 'completion_tokens', 0),
+                    "total_tokens": getattr(chunk_usage, 'total_tokens', 0)
+                }
+                
+                # 保留详细的 usage 信息
+                if hasattr(chunk_usage, 'prompt_tokens_details'):
+                    last_usage["prompt_tokens_details"] = {
+                        "cached_tokens": getattr(chunk_usage.prompt_tokens_details, 'cached_tokens', 0)
+                    }
+                
+                if hasattr(chunk_usage, 'completion_tokens_details'):
+                    last_usage["completion_tokens_details"] = {
+                        "reasoning_tokens": getattr(chunk_usage.completion_tokens_details, 'reasoning_tokens', 0)
+                    }
+                
+                if hasattr(chunk_usage, 'prompt_cache_hit_tokens'):
+                    last_usage["prompt_cache_hit_tokens"] = getattr(chunk_usage, 'prompt_cache_hit_tokens', 0)
+                
+                if hasattr(chunk_usage, 'prompt_cache_miss_tokens'):
+                    last_usage["prompt_cache_miss_tokens"] = getattr(chunk_usage, 'prompt_cache_miss_tokens', 0)
+            
             # 流式响应结束后，检查是否有工具调用
             tool_calls_list = [tool_calls_data[i] for i in sorted(tool_calls_data.keys())] if tool_calls_data else None
             
             # 如果没有工具调用，结束流式响应
             if not tool_calls_list or finish_reason == "stop":
-                # 发送结束 chunk
+                # 发送结束 chunk（只包含最后一轮的 usage）
                 final_chunk = {
                     "id": chat_id,
                     "object": "chat.completion.chunk",
@@ -417,6 +448,8 @@ class DeepSeekProxy:
                         "finish_reason": finish_reason or "stop"
                     }]
                 }
+                if last_usage:
+                    final_chunk["usage"] = last_usage
                 yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
@@ -506,6 +539,8 @@ class DeepSeekProxy:
                             "finish_reason": "tool_calls"
                         }]
                     }
+                    if last_usage:
+                        final_chunk["usage"] = last_usage
                     yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
                     yield "data: [DONE]\n\n"
                     return
@@ -523,6 +558,8 @@ class DeepSeekProxy:
                     "finish_reason": "tool_calls"
                 }]
             }
+            if last_usage:
+                final_chunk["usage"] = last_usage
             yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -542,6 +579,8 @@ class DeepSeekProxy:
                 "finish_reason": "length"
             }]
         }
+        if last_usage:
+            error_chunk["usage"] = last_usage
         yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
     
@@ -580,7 +619,7 @@ class DeepSeekProxy:
         iteration = 0
         max_iterations = CONFIG.get('max_iterations', 100)
         assistant_msg_index = None
-        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        last_usage = None  # 只保留最后一轮的 usage
         current_round_tool_ids = set()  # 跟踪当前轮次的工具调用 ID
         
         while iteration < max_iterations:
@@ -598,33 +637,31 @@ class DeepSeekProxy:
             message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
             
-            # 累计 token 使用（保留详细信息）
+            # 保存最后一轮的 usage 信息（不累积）
             if hasattr(response, 'usage') and response.usage:
                 usage = response.usage
-                total_usage["prompt_tokens"] += getattr(usage, 'prompt_tokens', 0)
-                total_usage["completion_tokens"] += getattr(usage, 'completion_tokens', 0)
-                total_usage["total_tokens"] += getattr(usage, 'total_tokens', 0)
+                last_usage = {
+                    "prompt_tokens": getattr(usage, 'prompt_tokens', 0),
+                    "completion_tokens": getattr(usage, 'completion_tokens', 0),
+                    "total_tokens": getattr(usage, 'total_tokens', 0)
+                }
                 
                 # 保留详细的 usage 信息（如果存在）
                 if hasattr(usage, 'prompt_tokens_details'):
-                    if "prompt_tokens_details" not in total_usage:
-                        total_usage["prompt_tokens_details"] = {"cached_tokens": 0}
-                    total_usage["prompt_tokens_details"]["cached_tokens"] += getattr(usage.prompt_tokens_details, 'cached_tokens', 0)
+                    last_usage["prompt_tokens_details"] = {
+                        "cached_tokens": getattr(usage.prompt_tokens_details, 'cached_tokens', 0)
+                    }
                 
                 if hasattr(usage, 'completion_tokens_details'):
-                    if "completion_tokens_details" not in total_usage:
-                        total_usage["completion_tokens_details"] = {"reasoning_tokens": 0}
-                    total_usage["completion_tokens_details"]["reasoning_tokens"] += getattr(usage.completion_tokens_details, 'reasoning_tokens', 0)
+                    last_usage["completion_tokens_details"] = {
+                        "reasoning_tokens": getattr(usage.completion_tokens_details, 'reasoning_tokens', 0)
+                    }
                 
                 if hasattr(usage, 'prompt_cache_hit_tokens'):
-                    if "prompt_cache_hit_tokens" not in total_usage:
-                        total_usage["prompt_cache_hit_tokens"] = 0
-                    total_usage["prompt_cache_hit_tokens"] += getattr(usage, 'prompt_cache_hit_tokens', 0)
+                    last_usage["prompt_cache_hit_tokens"] = getattr(usage, 'prompt_cache_hit_tokens', 0)
                 
                 if hasattr(usage, 'prompt_cache_miss_tokens'):
-                    if "prompt_cache_miss_tokens" not in total_usage:
-                        total_usage["prompt_cache_miss_tokens"] = 0
-                    total_usage["prompt_cache_miss_tokens"] += getattr(usage, 'prompt_cache_miss_tokens', 0)
+                    last_usage["prompt_cache_miss_tokens"] = getattr(usage, 'prompt_cache_miss_tokens', 0)
             
             # 提取响应内容
             new_reasoning = getattr(message, 'reasoning_content', None) or ""
@@ -670,9 +707,12 @@ class DeepSeekProxy:
                             "logprobs": None,
                             "finish_reason": finish_reason
                         }
-                    ],
-                    "usage": total_usage
+                    ]
                 }
+                
+                # 添加 usage 信息（如果有）
+                if last_usage:
+                    result["usage"] = last_usage
                 
                 # 添加 system_fingerprint（如果响应中有）
                 if hasattr(response, 'system_fingerprint'):
@@ -747,9 +787,12 @@ class DeepSeekProxy:
                                 "logprobs": None,
                                 "finish_reason": "tool_calls"
                             }
-                        ],
-                        "usage": total_usage
+                        ]
                     }
+                    
+                    # 添加 usage 信息（如果有）
+                    if last_usage:
+                        result["usage"] = last_usage
                     
                     if hasattr(response, 'system_fingerprint'):
                         result["system_fingerprint"] = response.system_fingerprint
@@ -780,9 +823,12 @@ class DeepSeekProxy:
                             "logprobs": None,
                             "finish_reason": "tool_calls"
                         }
-                    ],
-                    "usage": total_usage
+                    ]
                 }
+                
+                # 添加 usage 信息（如果有）
+                if last_usage:
+                    result["usage"] = last_usage
                 
                 if hasattr(response, 'system_fingerprint'):
                     result["system_fingerprint"] = response.system_fingerprint
@@ -812,9 +858,12 @@ class DeepSeekProxy:
                         "logprobs": None,
                         "finish_reason": "tool_calls"
                     }
-                ],
-                "usage": total_usage
+                ]
             }
+            
+            # 添加 usage 信息（如果有）
+            if last_usage:
+                result["usage"] = last_usage
             
             if hasattr(response, 'system_fingerprint'):
                 result["system_fingerprint"] = response.system_fingerprint
@@ -822,7 +871,7 @@ class DeepSeekProxy:
             return result
         
         # 达到最大迭代次数
-        return {
+        result = {
             "id": f"chatcmpl-{int(time.time())}",
             "object": "chat.completion",
             "created": int(time.time()),
@@ -836,9 +885,14 @@ class DeepSeekProxy:
                     },
                     "finish_reason": "length"
                 }
-            ],
-            "usage": total_usage
+            ]
         }
+        
+        # 添加 usage 信息（如果有）
+        if last_usage:
+            result["usage"] = last_usage
+        
+        return result
 
 
 @app.route('/v1/chat/completions', methods=['POST'])
