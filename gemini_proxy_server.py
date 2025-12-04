@@ -773,10 +773,22 @@ class GeminiProxy:
                 
                 # 执行 MCP 工具调用
                 if mcp_tool_calls:
-                    # 构建 model 响应消息（保留所有 parts 包括 functionCall 和思考签名）
+                    # 构建 model 响应消息
+                    # 只保留 functionCall 和 thoughtSignature，移除思考文本（thought:true 的 text）
+                    filtered_parts = []
+                    for part in accumulated_content_parts:
+                        if isinstance(part, dict):
+                            # 跳过思考文本（thought:true 的纯文本）
+                            if part.get('thought') and 'text' in part and 'thoughtSignature' not in part:
+                                continue
+                            # 保留 functionCall、thoughtSignature 和普通文本
+                            filtered_parts.append(part)
+                        else:
+                            filtered_parts.append(part)
+                    
                     model_content = {
                         "role": "model",
-                        "parts": accumulated_content_parts
+                        "parts": filtered_parts
                     }
                     contents_copy.append(model_content)
                     
@@ -948,11 +960,23 @@ class GeminiProxy:
                     
                     # 执行 MCP 工具调用
                     if mcp_tool_calls:
-                        # 构建 model 响应消息（保留完整的 parts 包括 functionCall 和思考签名）
-                        # 使用深拷贝确保所有字段（包括 thoughtSignature）都被保留
+                        # 构建 model 响应消息
+                        # 只保留 functionCall 和 thoughtSignature，移除思考文本（thought:true 的 text）
+                        original_parts = content.get("parts", [])
+                        filtered_parts = []
+                        for part in original_parts:
+                            if isinstance(part, dict):
+                                # 跳过思考文本（thought:true 的纯文本）
+                                if part.get('thought') and 'text' in part and 'thoughtSignature' not in part:
+                                    continue
+                                # 保留 functionCall、thoughtSignature 和普通文本
+                                filtered_parts.append(copy.deepcopy(part))
+                            else:
+                                filtered_parts.append(copy.deepcopy(part))
+                        
                         model_content = {
                             "role": content.get("role", "model"),
-                            "parts": copy.deepcopy(content.get("parts", []))
+                            "parts": filtered_parts
                         }
                         contents_copy.append(model_content)
                         
